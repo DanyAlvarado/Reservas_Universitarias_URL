@@ -2,9 +2,14 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from app.extensions import db
 from app.models import Reservation, Resource
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 reservations_bp = Blueprint("reservations", __name__)
+
+GT_OFFSET = timedelta(hours=-6)
+
+def now_gt():
+    return datetime.now(timezone.utc) + GT_OFFSET
 
 def has_conflict(resource_id, start, end):
     return Reservation.query.filter(
@@ -23,8 +28,10 @@ def create():
 
     if start >= end:
         return jsonify({"error": "Hora inicio debe ser antes que hora fin"}), 400
-    if start <= datetime.now(timezone.utc):
+
+    if start.replace(tzinfo=None) <= now_gt().replace(tzinfo=None):
         return jsonify({"error": "No se puede reservar en el pasado"}), 400
+
     if has_conflict(data["resource_id"], start, end):
         return jsonify({"error": "El recurso ya está reservado en ese horario"}), 409
 
@@ -48,7 +55,7 @@ def cancel(rid):
     if reservation.user_id != int(get_jwt_identity()):
         return jsonify({"error": "Sin permiso"}), 403
     if not reservation.can_cancel():
-        return jsonify({"error": "Cancelación requiere al menos 30 min de anticipación"}), 409
+        return jsonify({"error": "Cancelacion requiere al menos 30 min de anticipacion"}), 409
     reservation.status = "cancelled"
     db.session.commit()
     return jsonify(reservation.to_dict())
